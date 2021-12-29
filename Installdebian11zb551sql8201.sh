@@ -1,29 +1,3 @@
-#!/bin/sh
-
-# Correção de PATH
-export PATH="/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/bin:/usr/local/sbin:/usr/games"
-
-# Instalando os repositórios atuais:
-apt-get install sudo gnupg -y 
-
-set -e
-
-wget http://repo.mysql.com/mysql-apt-config_0.8.20-1_all.deb
-
-dpkg -i mysql-apt-config_0.8.20-1_all.deb
-
-apt-key adv --keyserver keys.gnupg.net --recv-keys 8C718D3B5072E1F5
-
-apt update
-
-wget https://repo.zabbix.com/zabbix/5.5/debian/pool/main/z/zabbix-release/zabbix-release_5.5-1+debian11_all.deb
-
-apt install -y mysql-community-server 
-
-dpkg -i zabbix-release_5.5-1+debian11_all.deb
-
-apt update
-
 # Versão 8.0 do MySQL
 MYSQL_VERSION=8.0
 MYSQL_PASSWD=P0rt@l2#19 # ALTERE ESSA SENHA DO ROOT!!
