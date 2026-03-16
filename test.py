@@ -1,32 +1,17 @@
-# ... [Seu código anterior do model.compile fica exatamente igual] ...
+# 1. Preparamos uma cópia do histórico apenas com as colunas que importam
+df_real = df[['ano_mes', 'qt_leads']].copy()
+# Criamos a nova coluna identificadora
+df_real['tipo'] = 'Real'
 
-print("Gerando o forecast...")
+# 2. Preparamos o DataFrame da previsão
+df_pred = forecast_df.copy()
+# Renomeamos a coluna projetada para ter exatamente o mesmo nome do histórico
+df_pred = df_pred.rename(columns={'qt_leads_projetado': 'qt_leads'})
+# Criamos a nova coluna identificadora
+df_pred['tipo'] = 'Predição'
 
-# 1. Extraímos os valores da coluna de leads como uma lista de arrays numpy
-valores_historicos = [df['qt_leads'].values]
+# 3. Juntamos os dois em um único DataFrame final (empilhando um no outro)
+df_final = pd.concat([df_real, df_pred], ignore_index=True)
 
-# 2. Usamos o método nativo 'forecast' da versão 2.5
-# Ele retorna dois objetos: a previsão exata (point) e os intervalos (quantiles)
-point_forecast, quantile_forecast = model.forecast(
-    horizon=6, 
-    inputs=valores_historicos
-)
-
-# 3. O resultado é uma matriz. Extraímos a primeira (e única) série do nosso teste
-previsao_leads = point_forecast[0]
-
-# 4. Descobrimos qual foi o último mês do histórico e criamos as datas futuras
-ultima_data = df['ano_mes'].max()
-datas_futuras = pd.date_range(
-    start=ultima_data + pd.DateOffset(months=1), 
-    periods=6, 
-    freq='MS' # Frequência mensal (MS = Month Start)
-)
-
-# 5. Montamos o DataFrame final limpo e pronto!
-forecast_df = pd.DataFrame({
-    'ano_mes': datas_futuras,
-    'qt_leads_projetado': previsao_leads
-})
-
-print(forecast_df)
+# Visualizando o resultado consolidado
+print(df_final)
