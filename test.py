@@ -1,59 +1,58 @@
+import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
+from sklearn.metrics import (
+    average_precision_score,
+    precision_recall_curve,
+    PrecisionRecallDisplay,
+    roc_auc_score,
+    roc_curve,
+    RocCurveDisplay
+)
 
-# 1. Parâmetros do Backtest
-horizonte = 3          # Quantos meses à frente vamos prever em cada teste (ex: trimestre)
-tamanho_inicial = 12   # Quantidade de meses que o modelo terá como base na primeira rodada
-passos_rolling = 4     # Quantas vezes a "origem" vai andar para frente no tempo
+# -------------------------------------------------------------------------
+# 1. Exemplo de dados (Substitua pelas suas variáveis reais)
+# y_true: labels reais (0 ou 1)
+# y_scores: probabilidades preditas pelo seu modelo (ex: model.predict_proba(X)[:, 1])
+# -------------------------------------------------------------------------
+# Criando dados fictícios apenas para o código rodar
+np.random.seed(42)
+y_true = np.random.randint(0, 2, size=1000)
+y_scores = np.random.uniform(0, 1, size=1000)
 
-resultados_reais = []
-resultados_previstos = []
+# -------------------------------------------------------------------------
+# 2. Cálculo das Métricas
+# -------------------------------------------------------------------------
+# O average_precision_score calcula o AUC-PR de forma robusta
+auc_pr = average_precision_score(y_true, y_scores)
+auc_roc = roc_auc_score(y_true, y_scores)
 
-print("Iniciando o Rolling Forecast...")
+print(f"ROC AUC Score: {auc_roc:.4f}")
+print(f"PR AUC Score : {auc_pr:.4f}")
 
-# 2. Loop do Rolling Origin
-for i in range(passos_rolling):
-    # O ponto de corte é onde o passado termina e o futuro começa nesta iteração
-    ponto_corte = tamanho_inicial + i
-    
-    # Valida se temos dados reais suficientes no histórico para validar esse horizonte
-    if (ponto_corte + horizonte) > len(df):
-        print(f"Parando na iteração {i+1}: Fim dos dados históricos disponíveis para validação.")
-        break
-        
-    # Separa o que o modelo vai "ver" (contexto) e o que ele precisa "acertar" (gabarito)
-    historico_contexto = df['qt_leads'].iloc[:ponto_corte].values
-    gabarito_real = df['qt_leads'].iloc[ponto_corte : ponto_corte + horizonte].values
-    
-    # 3. Faz a previsão com o TimesFM
-    point_forecast, _ = model.forecast(
-        horizon=horizonte, 
-        inputs=[historico_contexto]
-    )
-    previsao = point_forecast[0]
-    
-    # Guarda os resultados
-    resultados_reais.extend(gabarito_real)
-    resultados_previstos.extend(previsao)
-    
-    print(f"Passo {i+1} concluído.")
+# -------------------------------------------------------------------------
+# 3. Plotagem das Curvas (Lado a Lado para Comparação)
+# -------------------------------------------------------------------------
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 
-# 4. Cálculo das Métricas
-# Convertendo para arrays do numpy para facilitar a matemática
-reais_arr = np.array(resultados_reais)
-previstos_arr = np.array(resultados_previstos)
+# Plot da Curva ROC
+RocCurveDisplay.from_predictions(y_true, y_scores, ax=ax1, color="darkorange")
+ax1.plot([0, 1], [0, 1], "k--", label="Classificador Aleatório (AUC = 0.50)")
+ax1.set_title("Curva ROC")
+ax1.set_xlabel("Taxa de Falsos Positivos (FPR)")
+ax1.set_ylabel("Taxa de Verdadeiros Positivos (TPR / Recall)")
+ax1.legend(loc="lower right")
+ax1.grid(True, linestyle="--", alpha=0.7)
 
-# MAE (Mean Absolute Error): Erro médio absoluto em quantidade de leads
-mae = np.mean(np.abs(reais_arr - previstos_arr))
+# Plot da Curva Precision-Recall
+PrecisionRecallDisplay.from_predictions(y_true, y_scores, ax=ax2, color="blue")
+# A linha de base do PR é a proporção de positivos na base
+linha_base_pr = np.sum(y_true) / len(y_true)
+ax2.plot([0, 1], [linha_base_pr, linha_base_pr], "k--", label=f"Linha de Base (Proporção = {linha_base_pr:.2f})")
+ax2.set_title("Curva Precision-Recall (PR)")
+ax2.set_xlabel("Revocação (Recall / TPR)")
+ax2.set_ylabel("Precisão (Precision)")
+ax2.legend(loc="lower left")
+ax2.grid(True, linestyle="--", alpha=0.7)
 
-# RMSE (Root Mean Squared Error): Penaliza erros maiores na projeção
-rmse = np.sqrt(np.mean((reais_arr - previstos_arr)**2))
-
-# MAPE (Mean Absolute Percentage Error): Erro médio em porcentagem
-mape = np.mean(np.abs((reais_arr - previstos_arr) / reais_arr)) * 100
-
-print("\n--- Resultados da Avaliação ---")
-print(f"Total de previsões validadas: {len(reais_arr)} meses")
-print(f"MAE:  {mae:.2f} leads")
-print(f"RMSE: {rmse:.2f} leads")
-print(f"MAPE: {mape:.2f}%")
+plt.tight_layout()
+plt.show()
