@@ -1,81 +1,81 @@
 # %%
-# Setup
-# Continuação da Data Preparation — df_prime e df_varejo já carregados e com dt_movimento em datetime.
-# pip install pandas holidays python-dateutil numpy
+# Setup (continuação)
+# Este bloco continua o notebook da Data Preparation (células 1 a 4).
+# pandas e holidays já foram importados lá; aqui entram só os novos.
+# pip install numpy python-dateutil
 
-import holidays
 import numpy as np
-import pandas as pd
 from dateutil.easter import easter
 
 # %%
-# 1. Feriados nacionais OFICIAIS
-# A holidays.Brazil() só traz o que é feriado por lei (Ano Novo, Sexta-feira Santa,
-# Tiradentes, 1º de Maio, 7 de Setembro, 12/10, 2/11, 15/11, 20/11 a partir de 2024, Natal).
-
-br_holidays = holidays.Brazil(years=range(2019, 2027))
+# 5. Calendário completo — feriados oficiais
+# Reaproveita o br_holidays criado na célula 1. Aqui só separo num DataFrame próprio,
+# porque o calendário final vai ganhar mais datas nas próximas células.
 
 feriados_oficiais = pd.DataFrame(
     [{"ds": pd.Timestamp(data), "holiday": nome} for data, nome in br_holidays.items()]
 )
 
 print(f"{len(feriados_oficiais)} feriados oficiais entre 2019 e 2026")
+feriados_oficiais.head()
 
 # %%
-# 2. Datas móveis do Carnaval (não são feriado oficial, mas o banco para)
-# Todas se calculam a partir da Páscoa:
-#   Carnaval (segunda) = Páscoa - 48 dias
-#   Carnaval (terça)   = Páscoa - 47 dias
-#   Quarta de Cinzas   = Páscoa - 46 dias  -> é aqui que o represado é implantado
-#   Corpus Christi     = Páscoa + 60 dias
+# 5. Calendário completo — datas móveis do Carnaval
+# Carnaval e Corpus Christi são ponto facultativo, não feriado por lei — a holidays.Brazil()
+# não traz nenhum dos dois. Mas o banco para, então a série sente.
+# Todas saem da Páscoa:
+#   Carnaval (segunda) = Páscoa - 48  |  Carnaval (terça) = Páscoa - 47
+#   Quarta de Cinzas   = Páscoa - 46  |  Corpus Christi   = Páscoa + 60
 
-datas_moveis = []
+pascoas = pd.to_datetime([easter(ano) for ano in range(2019, 2027)])
 
-for ano in range(2019, 2027):
-    pascoa = pd.Timestamp(easter(ano))
-    datas_moveis.append({"ds": pascoa - pd.Timedelta(days=48), "holiday": "carnaval_segunda"})
-    datas_moveis.append({"ds": pascoa - pd.Timedelta(days=47), "holiday": "carnaval_terca"})
-    datas_moveis.append({"ds": pascoa - pd.Timedelta(days=46), "holiday": "quarta_de_cinzas"})
-    datas_moveis.append({"ds": pascoa + pd.Timedelta(days=60), "holiday": "corpus_christi"})
+carnaval_segunda = pascoas - pd.Timedelta(days=48)
+carnaval_terca = pascoas - pd.Timedelta(days=47)
+quarta_de_cinzas = pascoas - pd.Timedelta(days=46)
+corpus_christi = pascoas + pd.Timedelta(days=60)
 
-datas_moveis = pd.DataFrame(datas_moveis)
-
-# Conferindo contra o que apareceu nos resíduos do Prime (17/02/21, 02/03/22, 22/02/23, 14/02/24)
-print(datas_moveis[datas_moveis["holiday"] == "quarta_de_cinzas"])
+# Confere contra os resíduos do Prime: 17/02/21, 02/03/22, 22/02/23, 14/02/24
+print(quarta_de_cinzas)
 
 # %%
-# 3. Recesso de fim de ano
-# 25/12 e 01/01 já vêm nos oficiais. Faltam 24/12 (véspera) e 26 a 31/12.
-# Evidência: 24/12 apareceu com resíduo forte negativo nos DOIS segmentos, em 2024 e 2025.
+# 5. Calendário completo — recesso de fim de ano
+# 25/12 e 01/01 já vêm nos oficiais. Faltam a véspera (24/12) e o miolo (26 a 31/12).
+# Evidência: 24/12 deu resíduo forte negativo nos dois segmentos, em 2024 e 2025.
 
-recesso = []
+todos_os_dias = pd.date_range("2019-01-01", "2026-12-31", freq="D")
 
-for ano in range(2019, 2027):
-    recesso.append({"ds": pd.Timestamp(f"{ano}-12-24"), "holiday": "vespera_natal"})
-    for dia in range(26, 32):
-        recesso.append({"ds": pd.Timestamp(f"{ano}-12-{dia}"), "holiday": "recesso_fim_ano"})
+vespera_natal = todos_os_dias[(todos_os_dias.month == 12) & (todos_os_dias.day == 24)]
+recesso_fim_ano = todos_os_dias[(todos_os_dias.month == 12) & (todos_os_dias.day >= 26)]
 
-recesso = pd.DataFrame(recesso)
+print("vésperas:", len(vespera_natal), "| dias de recesso:", len(recesso_fim_ano))
 
 # %%
-# 4. Consolidar o calendário final (entrada do Prophet)
+# 5. Calendário completo — consolidar
+# ATENÇÃO: isto substitui o holidays_df que a célula 1 tinha criado.
+# Os oficiais entram primeiro, então em caso de data repetida o nome oficial prevalece.
 
-holidays_df = (
-    pd.concat([feriados_oficiais, datas_moveis, recesso])
-    .drop_duplicates(subset="ds", keep="first")   # se colidir, o oficial prevalece
-    .sort_values("ds")
-    .reset_index(drop=True)
-)
+holidays_df = pd.concat([
+    feriados_oficiais,
+    pd.DataFrame({"ds": carnaval_segunda, "holiday": "carnaval_segunda"}),
+    pd.DataFrame({"ds": carnaval_terca, "holiday": "carnaval_terca"}),
+    pd.DataFrame({"ds": quarta_de_cinzas, "holiday": "quarta_de_cinzas"}),
+    pd.DataFrame({"ds": corpus_christi, "holiday": "corpus_christi"}),
+    pd.DataFrame({"ds": vespera_natal, "holiday": "vespera_natal"}),
+    pd.DataFrame({"ds": recesso_fim_ano, "holiday": "recesso_fim_ano"}),
+]).drop_duplicates(subset="ds", keep="first").sort_values("ds").reset_index(drop=True)
 
+# holidays_df entra direto no Prophet: Prophet(holidays=holidays_df)
 print(f"{len(holidays_df)} datas no calendário final")
-print(holidays_df["holiday"].value_counts())
+holidays_df["holiday"].value_counts()
 
 # %%
-# 5. Flags binárias para o SARIMA — Prime
-# O Prophet aceita o holidays_df com um efeito por nome de feriado. O SARIMAX não tem
-# esse encolhimento automático, então lá agrupo em 4 flags: se abrisse uma coluna por
-# feriado, na janela de 2024 cada um teria só ~2 observações e o coeficiente viria puro ruído.
-# Os grupos separam efeitos de SINAL OPOSTO, que é o que não pode ser misturado:
+# 6. Flags de feriado pro SARIMA — Prime
+# O Prophet usa o holidays_df direto, com um efeito estimado por nome de feriado.
+# O SARIMAX não tem o encolhimento automático do Prophet: se eu abrisse uma coluna por
+# feriado, na janela de 2024 cada um teria ~2 observações e o coeficiente viria puro ruído.
+# Então agrupo em 4 flags, separando o que tem sinal oposto — feriado e recesso puxam
+# pra baixo, pós-carnaval puxa pra cima; juntar os dois anularia o efeito.
+# ATENÇÃO: o is_feriado aqui substitui o da célula 1, que juntava tudo numa flag só.
 
 datas_recesso = set(holidays_df.loc[holidays_df["holiday"].isin(["vespera_natal", "recesso_fim_ano"]), "ds"].dt.date)
 datas_carnaval = set(holidays_df.loc[holidays_df["holiday"].isin(["carnaval_segunda", "carnaval_terca"]), "ds"].dt.date)
@@ -87,49 +87,55 @@ df_prime["is_recesso"] = df_prime["dt_movimento"].dt.date.isin(datas_recesso).as
 df_prime["is_carnaval"] = df_prime["dt_movimento"].dt.date.isin(datas_carnaval).astype(int)
 df_prime["is_pos_carnaval"] = df_prime["dt_movimento"].dt.date.isin(datas_pos_carnaval).astype(int)
 
-print(df_prime[["is_feriado", "is_recesso", "is_carnaval", "is_pos_carnaval"]].sum())
+df_prime[["is_feriado", "is_recesso", "is_carnaval", "is_pos_carnaval"]].sum()
 
 # %%
-# 5b. Flags binárias para o SARIMA — Varejo
+# 6. Flags de feriado pro SARIMA — Varejo
 
 df_varejo["is_feriado"] = df_varejo["dt_movimento"].dt.date.isin(datas_feriado_comum).astype(int)
 df_varejo["is_recesso"] = df_varejo["dt_movimento"].dt.date.isin(datas_recesso).astype(int)
 df_varejo["is_carnaval"] = df_varejo["dt_movimento"].dt.date.isin(datas_carnaval).astype(int)
 df_varejo["is_pos_carnaval"] = df_varejo["dt_movimento"].dt.date.isin(datas_pos_carnaval).astype(int)
 
-print(df_varejo[["is_feriado", "is_recesso", "is_carnaval", "is_pos_carnaval"]].sum())
+df_varejo[["is_feriado", "is_recesso", "is_carnaval", "is_pos_carnaval"]].sum()
 
 # %%
-# 6. Sazonalidade anual para o SARIMA — termos de Fourier (Prime)
+# 7. Sazonalidade anual pro SARIMA — Prime
 # O Prophet modela sazonalidade anual nativamente. O SARIMA não consegue: o termo sazonal
-# dele usaria período 365, o que é inviável de estimar. A saída padrão é injetar a "onda"
-# anual como coluna exógena: pares de seno/cosseno com período de 1 ano.
-# Uso ordem 3 (6 colunas) — o suficiente para uma curva anual suave, sem inflar demais.
+# dele precisaria de período 365, inviável de estimar. A saída padrão é injetar a onda anual
+# como coluna exógena — pares de seno/cosseno que completam 1, 2 e 3 ciclos por ano.
+# Ordem 3 (6 colunas) dá uma curva anual suave sem inchar o modelo.
 
 EPOCA = pd.Timestamp("2020-01-01")
-ORDEM_FOURIER = 3
-
 t_prime = (df_prime["dt_movimento"] - EPOCA).dt.days.values
 
-for k in range(1, ORDEM_FOURIER + 1):
-    df_prime[f"fourier_sin_{k}"] = np.sin(2 * np.pi * k * t_prime / 365.25)
-    df_prime[f"fourier_cos_{k}"] = np.cos(2 * np.pi * k * t_prime / 365.25)
+df_prime["fourier_sin_1"] = np.sin(2 * np.pi * 1 * t_prime / 365.25)
+df_prime["fourier_cos_1"] = np.cos(2 * np.pi * 1 * t_prime / 365.25)
+df_prime["fourier_sin_2"] = np.sin(2 * np.pi * 2 * t_prime / 365.25)
+df_prime["fourier_cos_2"] = np.cos(2 * np.pi * 2 * t_prime / 365.25)
+df_prime["fourier_sin_3"] = np.sin(2 * np.pi * 3 * t_prime / 365.25)
+df_prime["fourier_cos_3"] = np.cos(2 * np.pi * 3 * t_prime / 365.25)
 
 df_prime.head()
 
 # %%
-# 6b. Sazonalidade anual para o SARIMA — termos de Fourier (Varejo)
+# 7. Sazonalidade anual pro SARIMA — Varejo
 
 t_varejo = (df_varejo["dt_movimento"] - EPOCA).dt.days.values
 
-for k in range(1, ORDEM_FOURIER + 1):
-    df_varejo[f"fourier_sin_{k}"] = np.sin(2 * np.pi * k * t_varejo / 365.25)
-    df_varejo[f"fourier_cos_{k}"] = np.cos(2 * np.pi * k * t_varejo / 365.25)
+df_varejo["fourier_sin_1"] = np.sin(2 * np.pi * 1 * t_varejo / 365.25)
+df_varejo["fourier_cos_1"] = np.cos(2 * np.pi * 1 * t_varejo / 365.25)
+df_varejo["fourier_sin_2"] = np.sin(2 * np.pi * 2 * t_varejo / 365.25)
+df_varejo["fourier_cos_2"] = np.cos(2 * np.pi * 2 * t_varejo / 365.25)
+df_varejo["fourier_sin_3"] = np.sin(2 * np.pi * 3 * t_varejo / 365.25)
+df_varejo["fourier_cos_3"] = np.cos(2 * np.pi * 3 * t_varejo / 365.25)
 
 df_varejo.head()
 
 # %%
-# 7. Recortar as janelas de novo (agora com as colunas novas) — Prime
+# 8. Recortar as janelas de novo — Prime
+# As janelas da célula 2 foram cortadas antes das colunas novas existirem, então
+# precisam ser refeitas pra carregar as flags e os termos de Fourier.
 
 FIM_TREINO = pd.Timestamp("2026-07-31")
 
@@ -137,22 +143,21 @@ df_prime_2020 = df_prime[(df_prime["dt_movimento"] >= "2020-01-01") & (df_prime[
 df_prime_2023 = df_prime[(df_prime["dt_movimento"] >= "2023-01-01") & (df_prime["dt_movimento"] <= FIM_TREINO)]
 df_prime_2024 = df_prime[(df_prime["dt_movimento"] >= "2024-01-01") & (df_prime["dt_movimento"] <= FIM_TREINO)]
 
-print("Prime ->", len(df_prime_2020), len(df_prime_2023), len(df_prime_2024))
+print("linhas -> completo:", len(df_prime_2020), "| desde 2023:", len(df_prime_2023), "| desde 2024:", len(df_prime_2024))
 
 # %%
-# 7b. Recortar as janelas de novo — Varejo
+# 8. Recortar as janelas de novo — Varejo
 
 df_varejo_2020 = df_varejo[(df_varejo["dt_movimento"] >= "2020-01-01") & (df_varejo["dt_movimento"] <= FIM_TREINO)]
 df_varejo_2023 = df_varejo[(df_varejo["dt_movimento"] >= "2023-01-01") & (df_varejo["dt_movimento"] <= FIM_TREINO)]
 df_varejo_2024 = df_varejo[(df_varejo["dt_movimento"] >= "2024-01-01") & (df_varejo["dt_movimento"] <= FIM_TREINO)]
 
-print("Varejo ->", len(df_varejo_2020), len(df_varejo_2023), len(df_varejo_2024))
+print("linhas -> completo:", len(df_varejo_2020), "| desde 2023:", len(df_varejo_2023), "| desde 2024:", len(df_varejo_2024))
 
 # %%
-# 8. Colunas exógenas do SARIMA (a lista que vai no argumento `exog`)
-# O `d` de cada janela já veio do ADF:
-#   Prime  -> 2020: d=1 | 2023: d=1 | 2024: d=0
-#   Varejo -> 2020: d=1 | 2023: d=1 | 2024: d=1
+# 9. Configuração do SARIMA — exógenas e o d de cada janela
+# COLS_EXOG é a lista que vai no argumento `exog` do SARIMAX.
+# O d de cada janela veio do ADF que rodamos na célula 3.
 
 COLS_EXOG = [
     "is_feriado", "is_recesso", "is_carnaval", "is_pos_carnaval",
@@ -170,21 +175,21 @@ print(COLS_EXOG)
 print(D_POR_JANELA)
 
 # %%
-# 9. Conferência: quanto vale, na média, cada grupo de data? (Prime)
-# Só para validar se os grupos fazem sentido antes de entrarem no modelo.
-# Espero: feriado e recesso ABAIXO da média; pós-carnaval ACIMA.
+# 10. Conferência de sanidade — Prime
+# Antes de jogar isso no modelo, confirmar que cada grupo se comporta como esperado.
+# Esperado: feriado, recesso e carnaval ABAIXO da média; pós-carnaval ACIMA.
 
-print("média geral:", round(df_prime_2020["qt_venda"].mean(), 1))
+print("média geral:  ", round(df_prime_2020["qt_venda"].mean(), 1))
 print("feriado comum:", round(df_prime_2020.loc[df_prime_2020["is_feriado"] == 1, "qt_venda"].mean(), 1))
-print("recesso:", round(df_prime_2020.loc[df_prime_2020["is_recesso"] == 1, "qt_venda"].mean(), 1))
-print("carnaval:", round(df_prime_2020.loc[df_prime_2020["is_carnaval"] == 1, "qt_venda"].mean(), 1))
-print("pós-carnaval:", round(df_prime_2020.loc[df_prime_2020["is_pos_carnaval"] == 1, "qt_venda"].mean(), 1))
+print("recesso:      ", round(df_prime_2020.loc[df_prime_2020["is_recesso"] == 1, "qt_venda"].mean(), 1))
+print("carnaval:     ", round(df_prime_2020.loc[df_prime_2020["is_carnaval"] == 1, "qt_venda"].mean(), 1))
+print("pós-carnaval: ", round(df_prime_2020.loc[df_prime_2020["is_pos_carnaval"] == 1, "qt_venda"].mean(), 1))
 
 # %%
-# 9b. Conferência — Varejo
+# 10. Conferência de sanidade — Varejo
 
-print("média geral:", round(df_varejo_2020["qt_venda"].mean(), 1))
+print("média geral:  ", round(df_varejo_2020["qt_venda"].mean(), 1))
 print("feriado comum:", round(df_varejo_2020.loc[df_varejo_2020["is_feriado"] == 1, "qt_venda"].mean(), 1))
-print("recesso:", round(df_varejo_2020.loc[df_varejo_2020["is_recesso"] == 1, "qt_venda"].mean(), 1))
-print("carnaval:", round(df_varejo_2020.loc[df_varejo_2020["is_carnaval"] == 1, "qt_venda"].mean(), 1))
-print("pós-carnaval:", round(df_varejo_2020.loc[df_varejo_2020["is_pos_carnaval"] == 1, "qt_venda"].mean(), 1))
+print("recesso:      ", round(df_varejo_2020.loc[df_varejo_2020["is_recesso"] == 1, "qt_venda"].mean(), 1))
+print("carnaval:     ", round(df_varejo_2020.loc[df_varejo_2020["is_carnaval"] == 1, "qt_venda"].mean(), 1))
+print("pós-carnaval: ", round(df_varejo_2020.loc[df_varejo_2020["is_pos_carnaval"] == 1, "qt_venda"].mean(), 1))
