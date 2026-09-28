@@ -1,9 +1,74 @@
 {
  "cells": [
   {
+   "cell_type": "markdown",
+   "id": "ccff24a3",
+   "metadata": {},
+   "source": [
+    "## 8.0 Backtest — como funciona\n",
+    "\n",
+    "### A ideia central\n",
+    "\n",
+    "Não dá pra simplesmente testar o modelo prevendo dias que ele já viu no treino — isso não prova nada (ele decorou). O backtest simula uma previsão de verdade: escondo um pedaço do futuro do modelo, peço a previsão, e só depois comparo com o que realmente aconteceu.\n",
+    "\n",
+    "Cada rodada desse teste (um **bloco**) tem três partes, na ordem em que aparecem no tempo:\n",
+    "\n",
+    "```\n",
+    "|<---------- TREINO ---------->|<---- GAP (44 du) ---->|<--- HORIZONTE (21 du) --->|\n",
+    "      o modelo aprende aqui         ele NÃO vê nada aqui      ele PREVÊ aqui, e é isso\n",
+    "                                                                que comparamos com o real\n",
+    "   ↑                          ↑\n",
+    "início da janela          ORIGEM\n",
+    "(ex: 2024-01-01)      (data de corte do treino)\n",
+    "```\n",
+    "\n",
+    "O gap de **44 dias úteis** e o horizonte de **21 dias úteis** não são arbitrários — são exatamente o tamanho de julho+agosto (o buraco real) e de setembro (o mês que queremos prever). Um gap menor testaria um problema mais fácil que o real, e o backtest enganaria a gente.\n",
+    "\n",
+    "### \"Expanding window\" — por que o treino cresce\n",
+    "\n",
+    "Dentro de uma mesma janela (ex: \"desde 2024\"), o **início do treino fica fixo**, e só a origem (fim do treino) avança. Cada bloco novo tem mais dado de treino que o anterior — o modelo só ganha histórico, nunca perde:\n",
+    "\n",
+    "```\n",
+    "Janela \"desde 2024\" — o início (2024-01) nunca muda, só a origem anda pra frente:\n",
+    "\n",
+    "origem 1:  [2024-01 ---- treino ---- 2024-07]···gap···|horizonte|\n",
+    "origem 2:  [2024-01 -------- treino -------- 2024-11]···gap···|horizonte|\n",
+    "origem 3:  [2024-01 ------------ treino ------------ 2025-03]···gap···|horizonte|\n",
+    "origem 4:  [2024-01 ---------------- treino ---------------- 2025-07]···gap···|horizonte|\n",
+    "```\n",
+    "\n",
+    "### Vários blocos, sem se sobrepor\n",
+    "\n",
+    "Uma única origem seria um \"teste de sorte\". Por isso repito o processo em **~6 pontos diferentes da história**, espaçados pra um bloco nunca invadir o outro:\n",
+    "\n",
+    "```\n",
+    "2024-07 ────┬[treino]├─gap─┤horiz├\n",
+    "2024-11 ─────────┬[treino]├─gap─┤horiz├\n",
+    "2025-03 ──────────────┬[treino]├─gap─┤horiz├\n",
+    "2025-07 ───────────────────┬[treino]├─gap─┤horiz├\n",
+    "2025-11 ────────────────────────┬[treino]├─gap─┤horiz├\n",
+    "2026-03 ─────────────────────────────┬[treino]├─gap─┤horiz├  ← última origem (limite: 30/06/2026)\n",
+    "```\n",
+    "\n",
+    "E as **mesmas 6 origens valem para as 3 janelas** (completo, desde 2023, desde 2024) — assim, ao comparar o erro entre janelas, a única coisa que muda é quanto histórico o modelo viu, não em que período ele foi testado.\n",
+    "\n",
+    "### O que sai de cada bloco\n",
+    "\n",
+    "Em cada origem, treino Prophet e SARIMA, peço a previsão dos 21 dias do horizonte, e calculo o erro (MAPE, RMSE, MAE) comparando previsto × real:\n",
+    "\n",
+    "```\n",
+    "origem × janela × modelo  ->  1 conjunto de erros (MAPE, RMSE, MAE)\n",
+    "\n",
+    "6 origens x 3 janelas x 2 modelos x 2 segmentos = 72 \"provas\" no total\n",
+    "```\n",
+    "\n",
+    "No final, tiro a **média dos erros dos 6 blocos** para cada combinação (janela, modelo) — essa média decide o vencedor. Um modelo que só acerta num bloco e erra feio nos outros 5 não passa: é exatamente esse tipo de sorte/azar isolado que rodar vários blocos evita.\n"
+   ]
+  },
+  {
    "cell_type": "code",
    "execution_count": null,
-   "id": "c02124c7",
+   "id": "92d525dc",
    "metadata": {},
    "outputs": [],
    "source": [
@@ -23,7 +88,7 @@
   {
    "cell_type": "code",
    "execution_count": null,
-   "id": "af28230c",
+   "id": "39c7de70",
    "metadata": {},
    "outputs": [],
    "source": [
@@ -49,7 +114,7 @@
   {
    "cell_type": "code",
    "execution_count": null,
-   "id": "4bf25b75",
+   "id": "88045f5e",
    "metadata": {},
    "outputs": [],
    "source": [
@@ -73,7 +138,7 @@
   {
    "cell_type": "code",
    "execution_count": null,
-   "id": "78e2a45f",
+   "id": "8d326914",
    "metadata": {},
    "outputs": [],
    "source": [
@@ -140,7 +205,7 @@
   {
    "cell_type": "code",
    "execution_count": null,
-   "id": "9a54e3ce",
+   "id": "fc8c31a9",
    "metadata": {},
    "outputs": [],
    "source": [
@@ -203,7 +268,7 @@
   {
    "cell_type": "code",
    "execution_count": null,
-   "id": "312fa8b1",
+   "id": "14a9a186",
    "metadata": {},
    "outputs": [],
    "source": [
